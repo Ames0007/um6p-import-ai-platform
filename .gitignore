@@ -1,0 +1,86 @@
+# =============================================================================
+# Assistant IA Import & Achats UM6P — fichiers non versionnés
+# Objectif : ne JAMAIS versionner secrets, données, sauvegardes, caches,
+# artefacts de build ni fichiers d'éditeur/OS.
+# =============================================================================
+
+# --- Dépendances ---
+node_modules/
+.pnp
+.pnp.js
+
+# --- Next.js / build frontend ---
+.next/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.turbo/
+*.tsbuildinfo
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Environnement (jamais de secrets versionnés) ---
+# Ignore tout .env à n'importe quelle profondeur (dont backend/.env),
+# SAUF le gabarit .env.example.
+.env
+.env.*
+!.env.example
+
+# --- Base de données / stockage ---
+*.sqlite3
+backend/uploads/
+backend/storage/
+pgdata/
+
+# Cluster PostgreSQL récupéré (données vivantes — jamais versionné)
+database/recovered_pgdata/
+
+# Sauvegardes : on conserve le dossier (via .gitkeep) mais aucun contenu.
+database/backups/*
+!database/backups/.gitkeep
+
+# Dumps / sauvegardes SQL (global) — SAUF scripts d'init/seed versionnés.
+*.sql
+*.dump
+*.backup
+!database/init/*.sql
+!database/seeds/*.sql
+
+# Artefacts d'exécution PostgreSQL
+postmaster.pid
+postmaster.opts
+*.pid
+*.wal
+pg_wal/
+recovery.log
+
+# --- Runtime & scripts temporaires (ne jamais versionner) ---
+backend/_pgconn.json
+_pgconn.json
+backend/_prodcount.py
+backend/_dbhold.py
+start-all.ps1
+
+# --- Journaux ---
+*.log
+npm-debug.log*
+logs/
+
+# --- Éditeur / OS / artefacts d'outils ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.claude/
+
+# --- Divers artefacts de build ---
+dist/
+coverage/

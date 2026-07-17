@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Thème UM6P — tokens sémantiques (format HSL sans wrapper, convention shadcn/ui).
+ * Fond blanc, texte charbon (#3B3B3C), primaire orange UM6P (#D7492A).
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%; /* blanc */
+    --foreground: 240 1% 23%; /* charcoal #3B3B3C */
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 1% 23%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 1% 23%;
+
+    /* Primaire = orange UM6P #D7492A */
+    --primary: 11 68% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondaire = gris très clair (surfaces) */
+    --secondary: 30 20% 97%;
+    --secondary-foreground: 240 1% 23%;
+
+    --muted: 30 12% 96%;
+    --muted-foreground: 240 3% 45%;
+
+    /* Accent = orange secondaire #ED6E47 (survol/mise en avant douce) */
+    --accent: 14 82% 96%;
+    --accent-foreground: 11 68% 42%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 11 68% 50%;
+
+    --radius: 0.85rem;
+
+    /* Sidebar */
+    --sidebar: 30 20% 98%;
+    --sidebar-foreground: 240 1% 23%;
+    --sidebar-accent: 14 82% 95%;
+    --sidebar-border: 240 6% 91%;
+  }
+
+  .dark {
+    --background: 240 4% 10%;
+    --foreground: 0 0% 96%;
+    --card: 240 4% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 4% 12%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 14 82% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 4% 18%;
+    --accent-foreground: 14 82% 70%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 4% 20%;
+    --input: 240 4% 20%;
+    --ring: 14 82% 60%;
+    --sidebar: 240 4% 12%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-accent: 240 4% 18%;
+    --sidebar-border: 240 4% 20%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Défilement discret et moderne */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+}

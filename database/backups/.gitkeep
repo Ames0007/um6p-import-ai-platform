@@ -1,0 +1,3 @@
+# Ce dossier accueille les sauvegardes logiques PostgreSQL (pg_dump).
+# Son contenu (*.sql, *.dump, *.backup, *.tar) n'est JAMAIS versionné (voir .gitignore).
+# Ce fichier .gitkeep ne sert qu'à préserver le dossier dans le dépôt.

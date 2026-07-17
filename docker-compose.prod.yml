@@ -1,0 +1,75 @@
+# =============================================================================
+# Surcouche PRODUCTION.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Différences avec le dev :
+#   - APP_ENV=production  → Gunicorn + workers Uvicorn (PAS de --reload).
+#   - AUCUN montage du code source → l'image livrée fait foi (jamais de code périmé).
+#   - Frontend construit (`next build`/`next start`), pas le serveur de dev.
+#   - Secrets OBLIGATOIRES : le backend refuse de démarrer avec des valeurs
+#     par défaut (voir app/core/runtime_checks.py). `${VAR:?...}` échoue tôt si absent.
+# =============================================================================
+
+x-prod-env: &prod-env
+  APP_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+  POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requis}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis}
+  POSTGRES_DB: ${POSTGRES_DB:-um6p_import}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  USE_TASK_QUEUE: "true"
+  INGESTION_QUEUE_NAME: ${INGESTION_QUEUE_NAME:-ingestion}
+  BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?BACKEND_CORS_ORIGINS requis}
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY requis (>=32 caractères)}
+  # --- Index de connaissance ---
+  KI_REFRESH_INTERVAL_SECONDS: "${KI_REFRESH_INTERVAL_SECONDS:-20}"
+  # --- Stockage documentaire / uploads ---
+  DOCUMENTS_DIR: ${DOCUMENTS_DIR:-./storage/documents}
+  UPLOAD_DIR: ${UPLOAD_DIR:-./uploads}
+  MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-25}"
+  # --- OCR / embeddings (hooks désactivés par défaut) ---
+  OCR_ENABLED: "${OCR_ENABLED:-false}"
+  OCR_PROVIDER: ${OCR_PROVIDER:-pdf_text}
+  OCR_MIN_CHARS_PER_PAGE: "${OCR_MIN_CHARS_PER_PAGE:-40}"
+  EMBEDDINGS_ENABLED: "${EMBEDDINGS_ENABLED:-false}"
+  EMBEDDING_DIM: "${EMBEDDING_DIM:-1536}"
+  # --- Claude API — vide = repli déterministe ---
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
+  WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+
+services:
+  postgres:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis}
+      POSTGRES_DB: ${POSTGRES_DB:-um6p_import}
+
+  migrate:
+    environment: *prod-env
+
+  backend:
+    environment: *prod-env
+    volumes:
+      - backend_uploads:/app/uploads
+      - documents_storage:/app/storage
+      # (pas de montage ./backend : le code de l'image fait foi)
+
+  worker:
+    environment: *prod-env
+    volumes:
+      - documents_storage:/app/storage
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    command: ["npm", "run", "start"]
+    volumes: []   # image construite : pas de montage source

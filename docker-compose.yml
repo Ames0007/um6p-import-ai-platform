@@ -1,0 +1,161 @@
+# =============================================================================
+# Runtime officiel — Assistant IA Import & Achats UM6P
+#
+#   docker compose up --build      → démarre TOUTE la stack (dev, hot reload)
+#
+# Ordre garanti : postgres (sain) → migrate (extensions + alembic upgrade head,
+# jusqu'au bout) → backend + worker. Le backend ne démarre JAMAIS avant la fin
+# des migrations. Port PostgreSQL fixe (5432), aucun port dynamique.
+#
+# Production :  docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+# =============================================================================
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+  # --- PostgreSQL (port fixe 5432, hôte = service docker `postgres`) ---
+  POSTGRES_USER: ${POSTGRES_USER:-um6p}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-um6p_dev_password}
+  POSTGRES_DB: ${POSTGRES_DB:-um6p_import}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  # --- Redis / file d'attente d'ingestion (worker dédié) ---
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  USE_TASK_QUEUE: "${USE_TASK_QUEUE:-true}"
+  INGESTION_QUEUE_NAME: ${INGESTION_QUEUE_NAME:-ingestion}
+  # --- Sécurité / CORS ---
+  BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://localhost:3005}
+  SECRET_KEY: ${SECRET_KEY:-dev-only-secret-key-not-for-production-0123456789}
+  # --- Index de connaissance (réconciliation en arrière-plan) ---
+  KI_REFRESH_INTERVAL_SECONDS: "${KI_REFRESH_INTERVAL_SECONDS:-20}"
+  # --- Stockage documentaire / uploads (volumes montés) ---
+  DOCUMENTS_DIR: ${DOCUMENTS_DIR:-./storage/documents}
+  UPLOAD_DIR: ${UPLOAD_DIR:-./uploads}
+  MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-25}"
+  # --- OCR (conformité import) — hooks désactivés par défaut ---
+  OCR_ENABLED: "${OCR_ENABLED:-false}"
+  OCR_PROVIDER: ${OCR_PROVIDER:-pdf_text}
+  OCR_MIN_CHARS_PER_PAGE: "${OCR_MIN_CHARS_PER_PAGE:-40}"
+  # --- Embeddings (recherche sémantique) — désactivés par défaut ---
+  EMBEDDINGS_ENABLED: "${EMBEDDINGS_ENABLED:-false}"
+  EMBEDDING_DIM: "${EMBEDDING_DIM:-1536}"
+  # --- Claude API — vide = repli déterministe (aucun appel externe) ---
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: um6p_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-um6p}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-um6p_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-um6p_import}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-um6p} -d ${POSTGRES_DB:-um6p_import}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: um6p_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Migrations one-shot : crée les extensions puis applique Alembic, jusqu'au bout.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: um6p_migrate
+    restart: "no"
+    environment: *backend-env
+    command: ["sh", "-c", "python -m app.db.bootstrap && alembic upgrade head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: um6p_backend
+    restart: unless-stopped
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app                  # dev : rechargement à chaud (--reload)
+      - backend_uploads:/app/uploads
+      - documents_storage:/app/storage
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: um6p_worker
+    restart: unless-stopped
+    environment: *backend-env
+    command: ["python", "-m", "app.workers.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./backend:/app
+      - documents_storage:/app/storage
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      target: dev
+    container_name: um6p_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Assistant IA Import UM6P}
+      NEXT_TELEMETRY_DISABLED: "1"
+    command: ["npm", "run", "dev"]
+    depends_on:
+      - backend
+    ports:
+      - "3005:3005"
+    volumes:
+      - ./frontend:/app
+      - ./shared:/shared
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  pgdata:
+  redisdata:
+  backend_uploads:
+  documents_storage:

@@ -1,0 +1,11 @@
+# Normalisation des fins de ligne. Les scripts shell DOIVENT rester en LF
+# (sinon l'entrypoint échoue dans les conteneurs Linux avec "no such file").
+* text=auto eol=lf
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+
+# Binaire : pas de normalisation.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ico binary
