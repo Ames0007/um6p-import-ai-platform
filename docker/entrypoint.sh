@@ -12,20 +12,24 @@ if [ "$RUN_MIGRATIONS" = "1" ]; then
   alembic upgrade head
 fi
 
+# Port d'écoute : $PORT est injecté par les PaaS (Railway, etc.) ; 8000 sinon
+# (Docker / compose / local). Le comportement historique est préservé.
+PORT="${PORT:-8000}"
+
 case "$APP_ENV" in
   production|prod)
-    echo "[entrypoint] mode PRODUCTION : gunicorn (${WEB_CONCURRENCY:-2} workers)"
+    echo "[entrypoint] mode PRODUCTION : gunicorn (${WEB_CONCURRENCY:-2} workers) sur :${PORT}"
     exec gunicorn app.main:app \
       -k uvicorn.workers.UvicornWorker \
       -w "${WEB_CONCURRENCY:-2}" \
-      -b 0.0.0.0:8000 \
+      -b "0.0.0.0:${PORT}" \
       --timeout "${WEB_TIMEOUT:-120}" \
       --graceful-timeout 30 \
       --access-logfile - \
       --error-logfile -
     ;;
   *)
-    echo "[entrypoint] mode DÉVELOPPEMENT : uvicorn --reload"
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    echo "[entrypoint] mode DÉVELOPPEMENT : uvicorn --reload sur :${PORT}"
+    exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT}" --reload
     ;;
 esac

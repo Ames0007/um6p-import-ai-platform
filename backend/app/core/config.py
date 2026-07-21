@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
+    # Regex optionnel d'origines autorisées (ex. previews Vercel).
+    # Vide = désactivé. Ex. : r"https://.*\.vercel\.app"
+    BACKEND_CORS_ORIGIN_REGEX: str = ""
 
     # --- Observabilité / journalisation (Phase 8) ---
     LOG_LEVEL: str = "INFO"

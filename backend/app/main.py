@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.endpoints.health import health as _health
 from app.api.v1.endpoints.health import live as _live
 from app.api.v1.endpoints.health import ready as _ready
 from app.api.v1.endpoints.health import readiness as _readiness
@@ -101,6 +102,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    # Regex optionnel (ex. déploiements preview Vercel `https://.*\.vercel\.app`).
+    allow_origin_regex=settings.BACKEND_CORS_ORIGIN_REGEX or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -135,7 +138,8 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# Alias racine des sondes (standards orchestrateur / Docker) — mêmes handlers.
+# Alias racine des sondes (standards orchestrateur / PaaS Railway / Docker) — mêmes handlers.
+app.add_api_route("/health", _health, tags=["Santé"])
 app.add_api_route("/live", _live, tags=["Santé"])
 app.add_api_route("/ready", _ready, tags=["Santé"])
 app.add_api_route("/readiness", _readiness, tags=["Santé"])
