@@ -1,7 +1,9 @@
 """Point d'entrée de l'application FastAPI."""
 from __future__ import annotations
 
+import datetime
 import logging
+import os
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -26,12 +28,40 @@ log = logging.getLogger("app")
 _QUIET_PATHS = {"/live", "/ready", "/readiness", "/api/v1/live", "/api/v1/ready",
                 "/api/v1/readiness", "/api/v1/health"}
 
+# --- Informations de build / diagnostic de déploiement --------------------
+# `git_commit` : renseigné automatiquement par Railway (RAILWAY_GIT_COMMIT_SHA)
+# ou via GIT_COMMIT. `enhanced_exception_logging` : marqueur présent depuis le
+# correctif de journalisation (be41633) — permet de vérifier que le code déployé
+# est bien à jour, sans deviner.
+_GIT_COMMIT = (
+    os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+    or os.environ.get("GIT_COMMIT")
+    or "unknown"
+)
+BUILD_INFO = {
+    "git_commit": _GIT_COMMIT,
+    "git_commit_short": _GIT_COMMIT[:7] if _GIT_COMMIT != "unknown" else "unknown",
+    "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    "enhanced_exception_logging": True,
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.getLogger("startup").info(
         "Démarrage de l'API.",
         extra={"extra_fields": {"env": settings.APP_ENV, "version": "1.0.0"}},
+    )
+    # Diagnostic explicite : APP_ENV RÉSOLU + commit + présence du correctif de logs.
+    logging.getLogger("startup").info(
+        "Configuration résolue : APP_ENV=%s (production=%s) commit=%s",
+        settings.APP_ENV, settings.is_production, BUILD_INFO["git_commit_short"],
+        extra={"extra_fields": {
+            "app_env": settings.APP_ENV,
+            "is_production": settings.is_production,
+            "git_commit": BUILD_INFO["git_commit"],
+            "enhanced_exception_logging": BUILD_INFO["enhanced_exception_logging"],
+        }},
     )
 
     # 1) Garde-fous de configuration (Phase 9) — bloque la prod avec secrets par défaut.
@@ -183,4 +213,22 @@ def root() -> dict[str, str]:
         "application": settings.APP_NAME,
         "version": "1.0.0",
         "docs": "/docs",
+    }
+
+
+@app.get(f"{settings.API_V1_PREFIX}/version", tags=["Diagnostic"])
+def version() -> dict:
+    """Diagnostic de déploiement : quel commit/quelle config tourne réellement ?
+
+    Permet de confirmer, sur l'instance déployée (Railway), que le code à jour
+    est bien en cours d'exécution et dans quel mode.
+    """
+    return {
+        "git_commit": BUILD_INFO["git_commit"],
+        "git_commit_short": BUILD_INFO["git_commit_short"],
+        "app_env": settings.APP_ENV,
+        "is_production": settings.is_production,
+        "server": "gunicorn (production)" if settings.is_production else "uvicorn --reload (development)",
+        "enhanced_exception_logging": BUILD_INFO["enhanced_exception_logging"],
+        "started_at": BUILD_INFO["started_at"],
     }

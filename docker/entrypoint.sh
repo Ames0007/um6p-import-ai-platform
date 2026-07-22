@@ -16,6 +16,9 @@ fi
 # (Docker / compose / local). Le comportement historique est préservé.
 PORT="${PORT:-8000}"
 
+# Diagnostic de démarrage : rend visible la configuration résolue dans les logs.
+echo "[entrypoint] APP_ENV=${APP_ENV:-<non défini>} PORT=${PORT} RUN_MIGRATIONS=${RUN_MIGRATIONS:-0} COMMIT=${RAILWAY_GIT_COMMIT_SHA:-${GIT_COMMIT:-unknown}}"
+
 case "$APP_ENV" in
   production|prod)
     echo "[entrypoint] mode PRODUCTION : gunicorn (${WEB_CONCURRENCY:-2} workers) sur :${PORT}"
