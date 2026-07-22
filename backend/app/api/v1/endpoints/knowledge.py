@@ -1,6 +1,7 @@
 """Endpoints de recherche dans la base de connaissances officielle."""
 from __future__ import annotations
 
+import logging
 import re
 
 from fastapi import APIRouter, Depends, Query
@@ -113,18 +114,43 @@ def knowledge_suggest(
     limit: int = Query(default=8, le=20),
     db: Session = Depends(get_db),
 ) -> SuggestResponse:
-    """Suggestions d'autocomplétion (sans IA) issues de l'Index de connaissance."""
+    """Suggestions d'autocomplétion (sans IA) issues de l'Index de connaissance.
+
+    Chemin non critique : en cas d'erreur (recherche ou donnée inattendue), on
+    dégrade proprement en renvoyant une liste vide (200) — l'autocomplétion ne
+    doit jamais casser l'UI — tout en journalisant la cause réelle.
+    """
+    query = q.strip()
     # Phase 7 : lecture seule — aucun rebuild sur le chemin de recherche.
-    hits = knowledge_index_search.search(db, q.strip(), limit=limit)
-    suggestions = [
-        Suggestion(
-            label=h.title or h.reference or "",
-            sublabel=h.reference if h.type == KI_HS_CODE else (h.chapter or h.type.title()),
-            type=h.type, reference=h.reference,
+    try:
+        hits = knowledge_index_search.search(db, query, limit=limit)
+    except Exception:
+        logging.getLogger("search").exception(
+            "Échec de la recherche de suggestions",
+            extra={"extra_fields": {"q": query}},
         )
-        for h in hits
-    ]
-    return SuggestResponse(query=q.strip(), suggestions=suggestions)
+        return SuggestResponse(query=query, suggestions=[])
+
+    suggestions: list[Suggestion] = []
+    for h in hits:
+        try:
+            htype = h.type or "UNKNOWN"
+            sublabel = h.reference if htype == KI_HS_CODE else (h.chapter or htype.title())
+            suggestions.append(
+                Suggestion(
+                    label=h.title or h.reference or "",
+                    sublabel=sublabel,
+                    type=htype,
+                    reference=h.reference,
+                )
+            )
+        except Exception:
+            logging.getLogger("search").warning(
+                "Suggestion ignorée (donnée inattendue)",
+                exc_info=True,
+                extra={"extra_fields": {"q": query, "hit_id": getattr(h, "id", None)}},
+            )
+    return SuggestResponse(query=query, suggestions=suggestions)
 
 
 @router.get("/search", response_model=SearchResponse)

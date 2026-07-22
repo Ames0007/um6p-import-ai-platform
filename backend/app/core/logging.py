@@ -45,7 +45,12 @@ class JsonFormatter(logging.Formatter):
         extra = getattr(record, "extra_fields", None)
         if isinstance(extra, dict):
             payload.update(extra)
-        if record.exc_info:
+        # Trace d'exception : toujours rendue (type, message, pile complète) dès
+        # qu'un exc_info est présent — quel que soit l'appelant (uvicorn inclus).
+        if record.exc_info and record.exc_info[0] is not None:
+            exc_type, exc_val, _ = record.exc_info
+            payload.setdefault("exc_type", getattr(exc_type, "__name__", str(exc_type)))
+            payload.setdefault("exc_message", str(exc_val))
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)
 

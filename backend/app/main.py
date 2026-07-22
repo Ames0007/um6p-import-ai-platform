@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 import time
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.endpoints.health import health as _health
 from app.api.v1.endpoints.health import live as _live
@@ -110,18 +112,48 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Filet global : TOUTE exception non gérée est journalisée AVEC sa trace
+    complète (type, message, fichier, ligne, pile), puis convertie en 500 JSON.
+
+    La trace est émise à la fois via `exc_info` (rendu par le formateur) ET
+    comme champ `traceback` en clair — garantissant qu'elle apparaît dans les
+    logs quel que soit le formateur/handler (uvicorn, gunicorn, JSON, texte).
+    """
+    tb_frames = traceback.extract_tb(exc.__traceback__)
+    last = tb_frames[-1] if tb_frames else None
+    full_tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    logging.getLogger("http").error(
+        "Exception non gérée : %s: %s (%s:%s)",
+        type(exc).__name__,
+        exc,
+        last.filename if last else "?",
+        last.lineno if last else "?",
+        exc_info=exc,
+        extra={"extra_fields": {
+            "method": request.method,
+            "path": str(request.url.path),
+            "exc_type": type(exc).__name__,
+            "exc_message": str(exc),
+            "exc_file": last.filename if last else None,
+            "exc_line": last.lineno if last else None,
+            "traceback": full_tb,
+        }},
+    )
+    return JSONResponse(status_code=500, content={"detail": "Erreur interne du serveur."})
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Journal structuré par requête (hors sondes de santé)."""
+    """Journal structuré par requête (hors sondes de santé).
+
+    Les exceptions ne sont PAS journalisées ici : le gestionnaire global
+    `unhandled_exception_handler` s'en charge (trace complète), on se contente
+    de les laisser remonter.
+    """
     start = time.monotonic()
-    try:
-        response = await call_next(request)
-    except Exception:
-        logging.getLogger("http").exception(
-            "Erreur non gérée",
-            extra={"extra_fields": {"method": request.method, "path": request.url.path}},
-        )
-        raise
+    response = await call_next(request)
     duration_ms = round((time.monotonic() - start) * 1000, 1)
     if request.url.path not in _QUIET_PATHS:
         logging.getLogger("http").info(
