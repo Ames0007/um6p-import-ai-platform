@@ -39,7 +39,10 @@ def validate_runtime(*, raise_on_error: bool = True) -> tuple[list[str], list[st
         (errors if prod else warnings).append(msg)
 
     # --- Mot de passe base de données ---
-    if settings.POSTGRES_PASSWORD in _DEFAULT_DB_PASSWORDS:
+    # Lorsqu'un DSN complet est fourni via DATABASE_URL (ex. Railway), les
+    # identifiants sont portés par le DSN : POSTGRES_PASSWORD n'est pas utilisé,
+    # on ne le valide donc pas (évite un faux blocage au démarrage en prod).
+    if not settings.DATABASE_URL_OVERRIDE.strip() and settings.POSTGRES_PASSWORD in _DEFAULT_DB_PASSWORDS:
         msg = "POSTGRES_PASSWORD utilise une valeur par défaut non sûre."
         (errors if prod else warnings).append(msg)
 

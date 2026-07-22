@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, computed_field
+from pydantic import AliasChoices, Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "um6p_import"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
+    # DSN complet optionnel — PRIORITAIRE sur les POSTGRES_* ci-dessus.
+    # Lu depuis la variable d'environnement `DATABASE_URL` (fournie telle quelle
+    # par Railway / Heroku / Render). Le pilote est normalisé en psycopg 3.
+    DATABASE_URL_OVERRIDE: str = Field(
+        default="", validation_alias=AliasChoices("DATABASE_URL", "POSTGRES_DSN")
+    )
 
     # --- Pool de connexions SQLAlchemy (Phase 3/6) ---
     DB_POOL_SIZE: int = 10
@@ -98,10 +104,31 @@ class Settings(BaseSettings):
     # Seuil d'alerte d'écart de prix (en %) vs prix moyen historique.
     PRICE_ALERT_THRESHOLD_PERCENT: float = 15.0
 
+    @staticmethod
+    def _normalize_dsn(url: str) -> str:
+        """Force le pilote psycopg 3 (`postgresql+psycopg://`).
+
+        Accepte les schémas fournis par les PaaS : `postgres://` et
+        `postgresql://` (pilote par défaut psycopg2, non installé ici).
+        """
+        url = url.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            url = "postgresql+psycopg://" + url[len("postgresql://"):]
+        return url
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL(self) -> str:
-        """URL SQLAlchemy (driver psycopg 3)."""
+        """URL SQLAlchemy (driver psycopg 3).
+
+        Priorité à `DATABASE_URL` (env, ex. Railway) si défini ; sinon,
+        construction à partir des variables `POSTGRES_*`.
+        """
+        override = (self.DATABASE_URL_OVERRIDE or "").strip()
+        if override:
+            return self._normalize_dsn(override)
         return (
             f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
